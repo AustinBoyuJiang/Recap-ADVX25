@@ -14,36 +14,41 @@ def merge_pairs(pairs):
 
 
 def split_sentence(sentence):
-    return merge_pairs([(x, 1) for x in re.findall(r'\b[a-zA-Z]+\b', sentence)])
+    return merge_pairs([((x, 1), 1) for x in re.findall(r'\b[a-zA-Z]+\b', sentence.lower())])
 
 
-def split_word(word):  # can be improved using unsupervised learning
-    prefixes = [
-        "un", "re", "in", "im", "dis", "pre", "mis", "non", "over", "under", "inter", "sub", "trans"
-    ]
-    suffixes = [
-        "able", "ible", "ing", "ed", "tion", "sion", "ment", "ness", "ly", "ous", "ive", "al", "est", "er", "less",
-        "ful", "s"
-    ]
-    word = word.lower()
-    prefix_match = None
-    suffix_match = None
-    for prefix in sorted(prefixes, key=len, reverse=True):
-        if word.startswith(prefix):
-            prefix_match = prefix
-            word = word[len(prefix):]
-            break
-    for suffix in sorted(suffixes, key=len, reverse=True):
-        if word.endswith(suffix):
-            suffix_match = suffix
-            word = word[:-len(suffix)]
-            break
-    return merge_pairs(
-        [(x, len(x) / len(word)) for x in [prefix_match, word, suffix_match] if (x is not None) and (x is not word)])
+def split_word(word):
+    common_prefixes = ['un', 're', 'in', 'im', 'il', 'ir', 'dis', 'en', 'em', 'non', 'over', 'mis', 'sub', 'pre',
+                       'inter', 'fore', 'de', 'trans', 'super', 'semi', 'anti', 'mid', 'under']
+    common_suffixes = ['able', 'ible', 'al', 'ial', 'ed', 'en', 'er', 'est', 'ful', 'ic', 'ing', 'ion', 'tion', 'ation',
+                       'ition', 'ity', 'ty', 'ive', 'ative', 'itive', 'less', 'ly', 'ment', 'ness', 'ous', 'eous',
+                       'ious', 's', 'es', 'y']
+    prefixes = []
+    suffixes = []
+    root = word
+    done = False
+    while not done:
+        done = True
+        for p in sorted(common_prefixes, key=lambda x: -len(x)):
+            if root.startswith(p):
+                prefixes.append(p)
+                root = root[len(p):]
+                done = False
+                break
+    done = False
+    while not done:
+        done = True
+        for s in sorted(common_suffixes, key=lambda x: -len(x)):
+            if root.endswith(s):
+                suffixes.insert(0, s)  # insert at front to preserve order
+                root = root[:-len(s)]
+                done = False
+                break
+    return [((x, 2), len(x) / len(word)) for x in (prefixes + suffixes)] + [((x, 3), 1 / len(word)) for x in root]
 
 
 def split_morpheme(morpheme):
-    return merge_pairs([(x, 1 / len(morpheme)) for x in morpheme])
+    return merge_pairs([((x, 3), 1 / len(morpheme)) for x in morpheme])
 
 
 def split_letter(letter):
@@ -64,7 +69,7 @@ retention_queue = SortedSet()
 def new_node(item, depth):
     time_ = time.time()
     retention = 1
-    decay_factor = math.log(2)/3  # half-life time of 60 seconds
+    decay_factor = math.log(2) / 3  # half-life time of 3 seconds
     ease_factor = 2.5
     time_last = time_ + math.log(retention) * ease_factor / decay_factor
     time_next = time_last - math.log(retention_threshold) * ease_factor / decay_factor
@@ -118,8 +123,9 @@ def update_node(item, grade, weight, depth):
 
 def update(item, grade, depth=0, weight=1):
     update_node(item, grade, weight, depth)
-    for item_next, w in nodes[depth][item]["next"]:
-        update(item_next, grade, depth + 1, weight * w)
+    for (item_next, depth_next), w in nodes[depth][item]["next"]:
+        update(item_next, grade, depth_next, weight * w)
+
 
 def update_all():
     for depth in range(4):
@@ -127,17 +133,15 @@ def update_all():
             update_retention(item, depth)
 
 
-# sentence = "The unsuccessful presentation caused considerable disappointment among international investors."
-# sentence = sentence.lower()
 update("i like eating apple", 5)
 time.sleep(2)
 update("apple are good to eat", 5)
 time.sleep(2)
 update("apple is my favourite fruit", 5)
 time.sleep(1)
+update("I am eating, singing, and dancing because I like eating and it's good to eat when you are enjoying it.", 0)
 
-update_all()
+
 t = time.time()
 retention_queue = [(round((x[0]-t), 2), x[1]) for x in retention_queue if x[1][1] in {1, 2}]
 pprint.pprint(retention_queue)
-pprint.pprint(nodes)
